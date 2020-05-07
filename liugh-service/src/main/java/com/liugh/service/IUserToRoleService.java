@@ -3,6 +3,8 @@ package com.liugh.service;
 import com.liugh.entity.UserToRole;
 import com.baomidou.mybatisplus.service.IService;
 
+import java.util.List;
+
 /**
  * <p>
  *  服务类
@@ -20,4 +22,12 @@ public interface IUserToRoleService extends IService<UserToRole> {
      */
     UserToRole selectByUserNo(String  userNo);
 
+    /**
+     * 根据用户ID查询人员角色
+     * @param userId 用户ID
+     * @return  结果
+     */
+    List<UserToRole> selectListByUserId(Integer  userId);
+
+    UserToRole selectByUserId(Integer  userId);
 }

@@ -8,6 +8,7 @@ import com.liugh.annotation.AccessLimit;
 import com.liugh.annotation.CurrentUser;
 import com.liugh.annotation.Log;
 import com.liugh.annotation.ValidationParam;
+import com.liugh.base.BusinessException;
 import com.liugh.config.ResponseHelper;
 import com.liugh.config.ResponseModel;
 import com.liugh.entity.User;
@@ -16,9 +17,17 @@ import com.liugh.util.ComUtil;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.shiro.authz.annotation.RequiresPermissions;
+import org.mindrot.jbcrypt.BCrypt;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * <p>
@@ -31,7 +40,6 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/user")
 public class UserController {
-
     @Autowired
     IUserService userService;
 
@@ -42,118 +50,104 @@ public class UserController {
      * @return
      * @throws Exception
      */
+    @ApiOperation(value = "获取当前用户信息")
     @GetMapping("/currentUser")
-    @Log(action="currentUser",modelName= "User",description="获取登录用户")
-    public ResponseModel<User> getUser(@CurrentUser User user) throws Exception{
+    public ResponseModel getUser(@CurrentUser User user) throws Exception{
         return ResponseHelper.succeed(user);
-    }
-
-    @PostMapping("/mobile")
-    public ResponseModel<String> resetMobile(@CurrentUser User currentUser,
-                                            @ValidationParam("newMobile,captcha")@RequestBody JSONObject requestJson )
-            throws Exception{
-        userService.resetMobile(currentUser,requestJson);
-        return ResponseHelper.succeed(null);
-    }
-
-    @PostMapping("/password")
-    public ResponseModel<String> resetPassWord (@CurrentUser User currentUser,
-            @ValidationParam("oldPassword,password,rePassword")@RequestBody JSONObject requestJson ) throws Exception{
-        userService.resetPassWord(currentUser,requestJson);
-        return ResponseHelper.succeed(null);
     }
 
     /**
-     * 管理端修改密码
+     * 获取当前登录用户信息
+     * @param user
      * @return
      * @throws Exception
      */
-    @PostMapping("/admin/password")
-    public ResponseModel<String> resetPassWord (@ValidationParam("userNo,password,rePassword")
-                                               @RequestBody JSONObject requestJson ) throws Exception{
-        userService.resetPassWord(userService.selectById(requestJson.getString("userNo")),requestJson);
+    @GetMapping("/logout")
+    public ResponseModel logout(@CurrentUser User user) throws Exception{
         return ResponseHelper.succeed(null);
     }
 
+    @ApiOperation(value = "根据ID获取用户信息")
+    @GetMapping(value = "/users/{id}")
+    public ResponseEntity getUser(@PathVariable String userNo){
+        return new ResponseEntity(userService.selectById(userNo), HttpStatus.OK);
+    }
 
-    @PostMapping("/info")
-    public ResponseModel<User> resetUserInfo (@CurrentUser User currentUser,@RequestBody JSONObject requestJson) throws Exception{
-        if(!ComUtil.isEmpty(requestJson.getString("username"))){
-            currentUser.setUsername(requestJson.getString("username"));
+    @ApiOperation(value = "查询用户")
+    @Log(description = "查询用户")
+    @GetMapping(value = "/users")
+    public ResponseEntity getUsers(@RequestParam(name = "pageIndex", defaultValue = "0", required = false) Integer pageIndex,
+                                   @RequestParam(name = "pageSize", defaultValue = "10", required = false) Integer pageSize,
+                                   @RequestParam(value = "username", defaultValue = "",required = false) String username,
+                                   @RequestParam(value = "mobile", defaultValue = "",required = false) String mobile,
+                                   @RequestParam(value = "status", defaultValue = "",required = false) Integer status){
+        PageListIO<User> body = new PageListIO<>();
+        body.setPageIndex(pageIndex+1);
+        body.setPageSize(pageSize);
+        User user = new User();
+        if(StringUtils.isNotBlank(username)){
+            user.setUsername(username);
         }
-        if(!ComUtil.isEmpty(requestJson.getString("avatar"))){
-            currentUser.setAvatar(requestJson.getString("avatar"));
+        if(StringUtils.isNotBlank(mobile)){
+            user.setMobile(mobile);
         }
-        if(!ComUtil.isEmpty(requestJson.getString("email"))){
-            currentUser.setEmail(requestJson.getString("email"));
+        if(status != null){
+            user.setStatus(status);
         }
-        if(!ComUtil.isEmpty(requestJson.getString("job"))){
-            currentUser.setJob(requestJson.getString("job"));
+        body.setFormData(user);
+        return new ResponseEntity(userService.queryAll(body), HttpStatus.OK);
+    }
+
+    @Log(description = "新增用户")
+    @PostMapping(value = "/users")
+    public ResponseEntity create(@Validated @RequestBody User resources){
+        userService.saveUser(resources);
+        return new ResponseEntity(HttpStatus.CREATED);
+    }
+
+    @Log(description = "修改用户")
+    @PutMapping(value = "/users")
+    public ResponseEntity update(@Validated @RequestBody User resources){
+        userService.updateUser(resources);
+        return new ResponseEntity(HttpStatus.NO_CONTENT);
+    }
+
+    @Log(description = "删除用户")
+    @DeleteMapping(value = "/users/{id}")
+    public ResponseEntity delete(@PathVariable Integer id) throws Exception{
+        userService.deleteUser(id);
+        return new ResponseEntity(HttpStatus.OK);
+    }
+
+    /**
+     * 验证密码
+     * @param pass
+     * @return
+     */
+    @GetMapping(value = "/users/validPass/{pass}")
+    public ResponseModel validPass(@CurrentUser User user, @PathVariable String pass){
+        Map map = new HashMap();
+        map.put("status",200);
+        if (ComUtil.isEmpty(user) || !BCrypt.checkpw(pass, user.getPassword())) {
+            map.put("status",400);
         }
-        userService.updateById(currentUser);
-        return ResponseHelper.succeed(currentUser);
+        return ResponseHelper.succeed(map);
     }
 
-    @GetMapping(value = "/pageList")
-    @RequiresPermissions(value = {"user:list"})
-    //拥有超级管理员或管理员角色的用户可以访问这个接口,换成角色控制权限,改变请看MyRealm.class
-   //@RequiresRoles(value = {Constant.RoleType.SYS_ASMIN_ROLE,Constant.RoleType.ADMIN},logical =  Logical.OR)
-    @AccessLimit(perSecond=1,timeOut = 500)//5秒钟生成一个令牌
-    public ResponseModel<Page<User>> findList(@RequestParam(name = "pageIndex", defaultValue = "1", required = false) Integer pageIndex,
-                                 @RequestParam(name = "pageSize", defaultValue = "10", required = false) Integer pageSize,
-                                 @RequestParam(value = "username", defaultValue = "",required = false) String username) {
-        return ResponseHelper.succeed(userService.selectPage(new Page<>(pageIndex, pageSize),
-            ComUtil.isEmpty(username)?new EntityWrapper<User>(): new EntityWrapper<User>().like("user_name", username)));
+    /**
+     * 修改密码
+     * @param pass
+     * @return
+     */
+    @GetMapping(value = "/users/updatePass/{pass}")
+    public ResponseEntity updatePass(@CurrentUser User user, @PathVariable String pass) throws Exception {
+        if(BCrypt.checkpw(pass, user.getPassword())){
+            throw new BusinessException("新密码不能与旧密码相同");
+        }
+        user.setPassword(pass);
+        userService.updatePass(user);
+        return new ResponseEntity(HttpStatus.OK);
     }
 
-    @GetMapping("/admin/infoList")
-    @ApiOperation(value="获取用户列表", notes="需要header里加入Authorization")
-    @ApiImplicitParams({
-            @ApiImplicitParam(name = "pageIndex", value = "第几页"
-                    , dataType = "String",paramType="query"),
-            @ApiImplicitParam(name = "pageSize", value = "每页多少条"
-                    , dataType = "String",paramType="query"),
-            @ApiImplicitParam(name = "info", value = "会员名称或者电话"
-                    , dataType = "String",paramType="query"),
-            @ApiImplicitParam(name = "startTime", value = "开始时间"
-                    , dataType = "Long",paramType="query"),
-            @ApiImplicitParam(name = "endTime", value = "结束时间"
-                    , dataType = "Long",paramType="query")
-    })
-    public ResponseModel findInfoList(@RequestParam(name = "pageIndex", defaultValue = "1", required = false) Integer pageIndex,
-                                     @RequestParam(name = "pageSize", defaultValue = "10", required = false) Integer pageSize,
-                                     //info-->用户名或者电话号码
-                                     @RequestParam(name = "info", defaultValue = "", required = false) String info,
-                                     @RequestParam(name = "startTime", defaultValue = "", required = false) String startTime,
-                                     @RequestParam(name = "endTime", defaultValue = "", required = false) String endTime) throws Exception{
-        //启用或禁用的用户
-        Integer []  status= {1,2};
-        //自定义分页关联查询列表
-        Page<User> userPage = userService.selectPageByConditionUser(new Page<User>(pageIndex, pageSize),info,status,
-                startTime,endTime);
-        return ResponseHelper.succeed(userPage);
-    }
-
-    @ApiOperation(value="获取用户详细信息", notes="根据url的id来获取用户详细信息")
-    @ApiImplicitParam(name = "userNo", value = "用户ID", required = true, dataType = "String",paramType = "path")
-    @GetMapping(value = "/{userNo}")
-    //暂时换成了角色控制权限,改变请看MyRealm.class
-    @RequiresPermissions(value = {"user:list"})
-    //拥有超级管理员或管理员角色的用户可以访问这个接口,换成角色控制权限,改变请看MyRealm.class
-    //@RequiresRoles(value = {Constant.RoleType.SYS_ASMIN_ROLE,Constant.RoleType.ADMIN},logical =  Logical.OR)
-    public ResponseModel<User> findOneUser(@PathVariable("userNo") String userNo) {
-        User user = userService.selectById(userNo);
-        return ResponseHelper.succeed(user);
-    }
-
-    @ApiOperation(value="删除用户", notes="根据url的id来删除用户")
-    @ApiImplicitParam(name = "userNo", value = "用户ID", required = true, dataType = "String",paramType = "path")
-    @DeleteMapping(value = "/{userNo}")
-    @RequiresPermissions(value = {"user:delete"})
-    public ResponseModel deleteUser(@PathVariable("userNo") String userNo) throws Exception{
-
-       userService.deleteByUserNo(userNo);
-        return ResponseHelper.succeed(null);
-    }
 }
 

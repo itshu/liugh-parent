@@ -9,6 +9,9 @@ import com.liugh.entity.Role;
 import com.liugh.model.RoleModel;
 import com.liugh.service.IRoleService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -22,73 +25,59 @@ import java.util.List;
  * @since 2018-05-03
  */
 @RestController
-@RequestMapping("/role")
+@RequestMapping("/system")
 public class RoleController {
-
     @Autowired
     private IRoleService roleService;
 
-    /**
-     *  角色列表
-     */
-    @GetMapping("/pageList")
-    //拥有超级管理员或管理员角色的用户可以访问这个接口,换成角色控制权限,改变请看MyRealm.class
-    //@RequiresRoles(value = {Constant.RoleType.SYS_ASMIN_ROLE,Constant.RoleType.ADMIN},logical =  Logical.OR)
-    public ResponseModel<Page<Role>> getPageList(@RequestParam(name = "pageIndex", defaultValue = "1", required = false) Integer pageIndex,
-                                     @RequestParam(name = "pageSize", defaultValue = "10", required = false) Integer pageSize){
-        //根据姓名查分页
-//        Page<Role> rolePage = roleService.selectPage(new Page<>(pageIndex, pageSize),
-//                new EntityWrapper<Role>().where("role_name like {0}","%"+name+"%"));
-        return ResponseHelper.succeed(roleService.selectPage(new Page<>(pageIndex, pageSize)));
+    @GetMapping(value = "/roles/{id}")
+    public ResponseEntity getRoles(@PathVariable String id){
+        return new ResponseEntity(roleService.selectById(id), HttpStatus.OK);
     }
 
     /**
-     *  获取所有角色
-     */
-    @GetMapping("/all")
-    public  ResponseModel<List<Role>> getAllRole(){
-        return ResponseHelper.succeed(roleService.selectList(new EntityWrapper<Role>()));
-    }
-
-    /**
-     * 获取角色详细信息
-     */
-    @GetMapping(value = "/{roleCode}")
-    public ResponseModel getById(@PathVariable("roleCode") String roleCode)throws Exception{
-        return ResponseHelper.succeed(roleService.selectByRoleCode(roleCode));
-    }
-
-    /**
-     * 删除角色
-     */
-    @DeleteMapping(value = "/{roleCode}")
-    //拥有超级管理员或管理员角色的用户可以访问这个接口,换成角色控制权限,改变请看MyRealm.class
-    //@RequiresRoles(value = {Constant.RoleType.SYS_ASMIN_ROLE,Constant.RoleType.ADMIN},logical =  Logical.OR)
-    public ResponseModel deleteRole(@PathVariable("roleCode") String roleCode)throws Exception{
-        roleService.deleteByRoleCode(roleCode);
-        return ResponseHelper.succeed(null);
-    }
-
-    /**
-     * 添加角色
-     * @param roleModel
+     * 返回全部的角色，新增用户时下拉选择
      * @return
      */
-    @PostMapping
-    public ResponseModel addRole(RoleModel roleModel) throws Exception{
-        return ResponseHelper.succeed(roleService.addRoleAndPermission(roleModel));
+    @GetMapping(value = "/roles/tree")
+    public ResponseEntity getRoleTree(){
+        return new ResponseEntity(roleService.getRoleTree(),HttpStatus.OK);
     }
 
-    /**
-     * 修改角色信息
-     */
-    @PutMapping
-    public ResponseModel updateRole(RoleModel roleModel) throws Exception{
-        roleService.updateRoleInfo(roleModel);
-        return ResponseHelper.succeed(null);
+    @Log(description="查询角色")
+    @GetMapping(value = "/roles")
+    public ResponseEntity getRoles(@RequestParam(name = "page", defaultValue = "0", required = false) Integer pageIndex,
+                                   @RequestParam(name = "size", defaultValue = "10", required = false) Integer pageSize,
+                                   @RequestParam(value = "roleName", defaultValue = "",required = false) String roleName){
+        PageListIO<Role> body = new PageListIO<>();
+        body.setPageIndex(pageIndex+1);
+        body.setPageSize(pageSize);
+        Role role = new Role();
+        role.setRoleName(roleName);
+        body.setFormData(role);
+        return new ResponseEntity(roleService.queryAll(body),HttpStatus.OK);
     }
 
+    @Log(description="新增角色")
+    @PostMapping(value = "/roles")
+    public ResponseEntity create(@Validated @RequestBody Role resources)throws Exception{
+        roleService.addRoleAndPermission(resources);
+        return new ResponseEntity(HttpStatus.CREATED);
+    }
 
+    @Log(description="修改角色")
+    @PutMapping(value = "/roles")
+    public ResponseEntity update(@Validated @RequestBody Role resources)throws Exception{
+        roleService.updateRoleInfo(resources);
+        return new ResponseEntity(HttpStatus.NO_CONTENT);
+    }
+
+    @Log(description="删除角色")
+    @DeleteMapping(value = "/roles/{id}")
+    public ResponseEntity delete(@PathVariable Integer id)throws Exception{
+        roleService.deleteByRoleId(id);
+        return new ResponseEntity(HttpStatus.OK);
+    }
 
 }
 

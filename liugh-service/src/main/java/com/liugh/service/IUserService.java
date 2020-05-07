@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.plugins.Page;
 import com.liugh.entity.User;
 import com.baomidou.mybatisplus.service.IService;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -53,4 +54,16 @@ public interface IUserService extends IService<User> {
     void resetPassWord(User currentUser, JSONObject requestJson)throws Exception;
 
     User insertUserByAdmin(JSONObject requestJson)throws Exception;
+
+    Object queryAll(PageListIO<User> body);
+
+    List<String> getRoles(Integer userId);
+
+    void saveUser(User user);
+
+    void updateUser(User user);
+
+    void deleteUser(Integer id);
+
+    void updatePass(User user);
 }
